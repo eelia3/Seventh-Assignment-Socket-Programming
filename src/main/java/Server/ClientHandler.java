@@ -1,62 +1,103 @@
 package Server;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
 import java.util.List;
 
 public class ClientHandler implements Runnable {
     private Socket socket;
-    // TODO: Declare a variable to hold the input stream from the socket
-    // TODO: Declare a variable to hold the output stream from the socket
+    private DataInputStream dis;
+    private DataOutputStream dos;
     private List<ClientHandler> allClients;
     private String username;
 
-    public ClientHandler() {
-        // TODO: Modify the constructor as needed
+    public ClientHandler(Socket socket, List<ClientHandler> allClients) throws IOException {
+        this.socket = socket;
+        this.allClients = allClients;
+        dis = new DataInputStream(socket.getInputStream());
+        dos = new DataOutputStream(socket.getOutputStream());
     }
 
     @Override
     public void run() {
         try {
             while (true) {
-                // TODO: Read incoming message from the input stream
-                // TODO: Process the message
+                String command = dis.readUTF();
+
+                switch (command) {
+                    case "LOGIN" -> handleLogin();
+                    case "CHAT" -> broadcast(username + ": " + dis.readUTF());
+                    case "UPLOAD" -> receiveFile(dis.readUTF(), dis.readInt());
+                    case "GET_FILE_LIST" -> sendFileList();
+                    case "DOWNLOAD" -> sendFile(dis.readUTF());
+                }
             }
         } catch (Exception e) {
-
+            System.out.println(username + " disconnected.");
         } finally {
-            //TODO: Update the clients list in Server
+            allClients.remove(this);
         }
     }
 
+    private void handleLogin() throws IOException {
+        String u = dis.readUTF();
+        String p = dis.readUTF();
 
-    private void sendMessage(String msg){
-        //TODO: send the message (chat) to the client
+        if (Server.authenticate(u, p)) {
+            username = u;
+            dos.writeUTF("LOGIN_SUCCESS");
+
+            File userDir = new File("resources/Client/" + username);
+            userDir.mkdirs();
+        } else {
+            dos.writeUTF("LOGIN_FAIL");
+        }
     }
+
     private void broadcast(String msg) throws IOException {
-        //TODO: send the message to every other user currently in the chat room
+        for (ClientHandler client : allClients) {
+            if (!client.username.equals(this.username)) {
+                client.sendMessage(msg);
+            }
+        }
     }
 
-    private void sendFileList(){
-        // TODO: List all files in the server directory
-        // TODO: Send a message containing file names as a comma-separated string
-    }
-    private void sendFile(String fileName){
-        // TODO: Send file name and size to client
-        // TODO: Send file content as raw bytes
-    }
-    private void receiveFile(String filename, int fileLength)
-    {
-        // TODO: Receive uploaded file content and store it in a byte array
-        // TODO: after the upload is done, save it using saveUploadedFile
-    }
-    private void saveUploadedFile(String filename, byte[] data) throws IOException {
-        // TODO: Save the byte array to a file in the Server's resources folder
+    private void sendMessage(String msg) throws IOException {
+        dos.writeUTF("CHAT");
+        dos.writeUTF(msg);
     }
 
-    private void handleLogin(String username, String password) throws IOException, ClassNotFoundException {
-        // TODO: Call Server.authenticate(username, password) to check credentials
-        // TODO: Send success or failure response to the client
+    private void receiveFile(String filename, int length) throws IOException {
+        byte[] buffer = new byte[length];
+        dis.readFully(buffer);
+
+        File outFile = new File("resources/Server/" + filename);
+        try (FileOutputStream fos = new FileOutputStream(outFile)) {
+            fos.write(buffer);
+        }
+
+        System.out.println("Received file: " + filename);
     }
 
+    private void sendFileList() throws IOException {
+        File folder = new File("resources/Server");
+        String[] files = folder.list();
+        if (files == null) files = new String[0];
+        String fileList = String.join(",", files);
+        dos.writeUTF("FILE_LIST");
+        dos.writeUTF(fileList);
+    }
+
+    private void sendFile(String filename) throws IOException {
+        File file = new File("resources/Server/" + filename);
+        byte[] data = new byte[(int) file.length()];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            fis.read(data);
+        }
+
+        dos.writeUTF("FILE_DATA");
+        dos.writeUTF(filename);
+        dos.writeInt(data.length);
+        dos.write(data);
+    }
 }
