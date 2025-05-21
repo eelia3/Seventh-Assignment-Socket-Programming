@@ -77,7 +77,6 @@ public class ClientHandler implements Runnable {
         }
 
         System.out.println("Received file: " + filename);
-        broadcastFileList();
     }
 
     private void sendFileList() throws IOException {
@@ -89,24 +88,6 @@ public class ClientHandler implements Runnable {
         dos.writeUTF(fileList);
     }
 
-    private void broadcastFileList() throws IOException {
-        File folder = new File("resources/Server");
-        String[] files = folder.list();
-        if (files == null) files = new String[0];
-        String fileList = String.join(",", files);
-
-        for (ClientHandler client : allClients) {
-
-            if (client.username.equals(this.username)) continue;
-
-            try {
-                client.dos.writeUTF("FILE_LIST");
-                client.dos.writeUTF(fileList);
-            } catch (IOException e) {
-                System.out.println("Couldn't send file list to " + client.username);
-            }
-        }
-    }
 
 
     private void sendFile(String filename) throws IOException {
